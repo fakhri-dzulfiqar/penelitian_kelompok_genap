@@ -4,14 +4,6 @@ __pycache__/
 *.pyo
 *.egg-info/
 
-# Output
-output/plots/*
-output/tables/*
-
-# Keep the gitkeep so structure stays
-!output/plots/.gitkeep
-!output/tables/.gitkeep
-
 # Environment
 .env
 venv/
