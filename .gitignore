@@ -1,0 +1,22 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Output
+output/plots/*
+output/tables/*
+
+# Keep the gitkeep so structure stays
+!output/plots/.gitkeep
+!output/tables/.gitkeep
+
+# Environment
+.env
+venv/
+.venv/
+
+# OS
+Thumbs.db
+.DS_Store
