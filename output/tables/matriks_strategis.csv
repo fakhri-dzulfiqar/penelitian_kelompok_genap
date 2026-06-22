@@ -1,0 +1,14 @@
+Komoditas,Singkat,Mean_Juta_USD,CV_%,CAGR_%,Slope,Amplitudo_Musiman,Kuadran,Ukuran_Bubble
+Sayur-sayuran,Sayuran,16.14,81.36,37.92,0.302,28.02,📈 Potensial,16.14
+Tembakau,Tembakau,7.27,48.22,-4.72,-0.02,9.28,🟢 Stabil,7.27
+Jagung,Jagung,1.35,232.46,-58.28,-0.1,4.03,⚠️ Risiko Tinggi,1.35
+Kopi,Kopi,138.75,48.93,65.21,4.644,109.03,📈 Potensial,138.75
+"Tanaman Obat, Aromatik, dan Rempah-Rempah",Tanaman Obat & Rempah,42.46,24.13,17.5,0.482,15.41,🟢 Stabil,42.46
+Lada Hitam,Lada Hitam,7.95,101.53,60.47,0.209,12.6,📈 Potensial,7.95
+Lada Putih,Lada Putih,9.01,41.8,42.41,0.218,4.03,⭐ Andalan,9.01
+Biji Kakao,Kakao,5.43,54.23,23.13,0.042,5.53,📈 Potensial,5.43
+Buah-buahan Tahunan,Buah Tahunan,46.26,46.61,50.96,1.148,37.77,⭐ Andalan,46.26
+Sarang Burung,Sarang Burung,45.85,21.74,-13.46,-0.465,20.6,🟢 Stabil,45.85
+Hasil Hutan Bukan Kayu Lainnya,Hasil Hutan Lain,0.26,26.08,3.18,0.0,0.17,🟢 Stabil,0.26
+Ikan Segar/Dingin Hasil Tangkapan,Ikan Segar,11.67,55.24,33.41,0.229,13.6,📈 Potensial,11.67
+Rumput Laut dan Ganggang Lainnya,Rumput Laut,17.99,32.97,-19.51,-0.356,10.1,🟢 Stabil,17.99

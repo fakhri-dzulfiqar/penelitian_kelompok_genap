@@ -1,13 +1,14 @@
 """
-Script 06: Dashboard Interaktif (Streamlit)
+Script 06: Dashboard Interaktif (Streamlit) — Full Interaktif
 Proposal: Analisis Tren dan Pola Musiman Ekspor Komoditas Pertanian Unggulan Indonesia
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from pathlib import Path
 from statsmodels.tsa.seasonal import seasonal_decompose
 
@@ -16,7 +17,16 @@ st.set_page_config(page_title="Dashboard Ekspor Pertanian", layout="wide")
 BASE_DIR = Path(__file__).resolve().parent.parent
 TABLE_DIR = BASE_DIR / "output" / "tables"
 
-# --- Load data ---
+WARNA_KUADRAN = {
+    "⭐ Andalan": "#2ECC71",
+    "📈 Potensial": "#F39C12",
+    "🟢 Stabil": "#3498DB",
+    "⚠️ Risiko Tinggi": "#E74C3C",
+}
+
+# =====================================================================
+# LOAD DATA
+# =====================================================================
 @st.cache_data
 def load_data():
     df = pd.read_csv(TABLE_DIR / "dataset_lengkap.csv")
@@ -24,106 +34,112 @@ def load_data():
     return df
 
 @st.cache_data
-def load_stats():
+def load_csv(name, index_col=None):
     try:
-        return pd.read_csv(TABLE_DIR / "statistik_deskriptif.csv")
-    except:
-        return None
-
-@st.cache_data
-def load_cv():
-    try:
-        return pd.read_csv(TABLE_DIR / "volatilitas_cv.csv")
-    except:
-        return None
-
-@st.cache_data
-def load_cagr():
-    try:
-        return pd.read_csv(TABLE_DIR / "cagr.csv")
-    except:
-        return None
-
-@st.cache_data
-def load_cluster():
-    try:
-        return pd.read_csv(TABLE_DIR / "clustering_hasil.csv")
-    except:
-        return None
-
-@st.cache_data
-def load_amp():
-    try:
-        return pd.read_csv(TABLE_DIR / "amplitudo_musiman.csv")
-    except:
+        return pd.read_csv(TABLE_DIR / name, index_col=index_col)
+    except Exception:
         return None
 
 df = load_data()
-stats = load_stats()
-df_cv = load_cv()
-df_cagr = load_cagr()
-df_cluster = load_cluster()
-df_amp = load_amp()
+stats = load_csv("statistik_deskriptif.csv", index_col=0)
+df_cv = load_csv("volatilitas_cv.csv")
+df_cagr = load_csv("cagr.csv")
+df_cluster = load_csv("clustering_hasil.csv")
+df_amp = load_csv("amplitudo_musiman.csv")
+df_matriks = load_csv("matriks_strategis.csv")
 
-kom_inti = [k for k in df["Komoditas"].unique()
-            if k not in ["Lainnya", "Jumlah"]]
+kom_inti = [k for k in df["Komoditas"].unique() if k not in ["Lainnya", "Jumlah"]]
 
-# ===== SIDEBAR =====
+# Mapping nama singkat
+KOM_SINGKAT = {
+    "Sayur-sayuran": "Sayuran", "Tembakau": "Tembakau", "Jagung": "Jagung",
+    "Kopi": "Kopi",
+    "Tanaman Obat, Aromatik, dan Rempah-Rempah": "Tanaman Obat & Rempah",
+    "Lada Hitam": "Lada Hitam", "Lada Putih": "Lada Putih",
+    "Biji Kakao": "Kakao", "Buah-buahan Tahunan": "Buah Tahunan",
+    "Sarang Burung": "Sarang Burung",
+    "Hasil Hutan Bukan Kayu Lainnya": "Hasil Hutan Lain",
+    "Ikan Segar/Dingin Hasil Tangkapan": "Ikan Segar",
+    "Rumput Laut dan Ganggang Lainnya": "Rumput Laut",
+}
+
+# =====================================================================
+# SIDEBAR
+# =====================================================================
 st.sidebar.title("🌾 Ekspor Pertanian")
 st.sidebar.markdown("Analisis Tren & Pola Musiman")
 st.sidebar.markdown("**Data:** Jan 2023 – Feb 2026")
-st.sidebar.markdown("**Peneliti:** Dr. Anindhyta Budiarti, S.E., M.M.")
 st.sidebar.markdown("**Institusi:** STIESIA Surabaya")
 st.sidebar.markdown("---")
 
-# Filter komoditas
 pilih_kom = st.sidebar.multiselect(
     "Pilih Komoditas",
     options=kom_inti,
     default=kom_inti[:5]
 )
-
 if not pilih_kom:
     st.warning("Pilih minimal satu komoditas di sidebar.")
     st.stop()
 
-# ===== TAB 1: TREN =====
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📈 Tren Ekspor", "📊 Perbandingan", "🔬 Analisis", "📋 Tabel Data"
+# =====================================================================
+# TABS
+# =====================================================================
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📈 Tren Ekspor", "📊 Perbandingan", "🔬 Analisis",
+    "📋 Matriks Strategis", "📁 Tabel Data"
 ])
 
+# ===== TAB 1: TREN EKSPOR (Plotly interaktif) =====
 with tab1:
     st.header("Tren Nilai Ekspor Bulanan")
 
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        metode_tren = st.radio("Tampilkan:", ["Aktual", "MA-3", "MA-6"], index=0)
+    df_filt = df[df["Komoditas"].isin(pilih_kom)]
 
-    with col1:
-        fig = px.line(
-            df[df["Komoditas"].isin(pilih_kom)],
-            x="Tanggal", y="Nilai_Ekspor_Juta_USD",
-            color="Komoditas",
-            title="Nilai Ekspor Bulanan (Juta US$)",
-            markers=True
-        )
-        fig.update_layout(legend_title="Komoditas")
-        st.plotly_chart(fig, use_container_width=True)
+    options = ["Aktual"]
+    if df_cagr is not None:
+        options.append("MA-3")
+        options.append("MA-6")
+    metode_tren = st.radio("Tampilkan:", options, horizontal=True)
 
-    # Ringkasan
-    st.subheader("Ringkasan Statistik")
+    if metode_tren == "Aktual":
+        df_plot = df_filt
+    else:
+        window = 3 if metode_tren == "MA-3" else 6
+        # Hitung MA per komoditas
+        rows = []
+        for kom in pilih_kom:
+            sub = df_filt[df_filt["Komoditas"] == kom].copy()
+            sub = sub.sort_values("Tanggal")
+            sub["Nilai_Ekspor_Juta_USD"] = (
+                sub["Nilai_Ekspor_Juta_USD"].rolling(window, center=True).mean()
+            )
+            rows.append(sub)
+        df_plot = pd.concat(rows)
+
+    fig = px.line(
+        df_plot.dropna(subset="Nilai_Ekspor_Juta_USD"),
+        x="Tanggal", y="Nilai_Ekspor_Juta_USD",
+        color="Komoditas",
+        title=f"Nilai Ekspor Bulanan — {metode_tren} (Juta US$)",
+        markers=True,
+    )
+    fig.update_layout(legend_title="Komoditas", hovermode="x unified")
+    st.plotly_chart(fig, use_container_width=True)
+
     if stats is not None:
+        st.subheader("Ringkasan Statistik")
         stats_filt = stats[stats.index.isin(pilih_kom)][["mean", "std", "min", "max"]]
         stats_filt.columns = ["Rata-rata", "Std", "Min", "Max"]
-        stats_filt = stats_filt.round(2)
-        st.dataframe(stats_filt, use_container_width=True)
-    else:
-        st.info("Jalankan script 01-03 dulu untuk melihat statistik.")
+        st.dataframe(stats_filt.round(2), use_container_width=True)
 
+# ===== TAB 2: PERBANDINGAN (100% Plotly interaktif) =====
 with tab2:
     st.header("Perbandingan Kinerja Antar Komoditas")
 
-    metrik = st.selectbox("Pilih Metrik", ["CV (%) — Volatilitas", "CAGR (%) — Pertumbuhan", "Amplitudo Musiman"])
+    metrik = st.selectbox(
+        "Pilih Metrik",
+        ["CV (%) — Volatilitas", "CAGR (%) — Pertumbuhan", "Amplitudo Musiman"]
+    )
 
     col_a, col_b = st.columns(2)
 
@@ -131,115 +147,271 @@ with tab2:
         if metrik == "CV (%) — Volatilitas" and df_cv is not None:
             df_plot = df_cv[df_cv["Komoditas"].isin(pilih_kom)].sort_values("CV_%")
             fig = px.bar(df_plot, x="CV_%", y="Singkat", orientation="h",
-                         title="Coefficient of Variation (%)", color="CV_%",
-                         color_continuous_scale="RdYlGn_r")
+                         title="Coefficient of Variation (%) — Stabilitas",
+                         color="CV_%", color_continuous_scale="RdYlGn_r", text_auto=".1f")
+            fig.update_layout(yaxis=dict(title=None))
             st.plotly_chart(fig, use_container_width=True)
 
         elif metrik == "CAGR (%) — Pertumbuhan" and df_cagr is not None:
             df_plot = df_cagr[df_cagr["Komoditas"].isin(pilih_kom)].sort_values("CAGR_%")
             fig = px.bar(df_plot, x="CAGR_%", y="Komoditas", orientation="h",
-                         title="CAGR 2023–2025 (%)", color="CAGR_%",
-                         color_continuous_scale="RdYlGn")
+                         title="CAGR 2023–2025 (%)",
+                         color="CAGR_%", color_continuous_scale="RdYlGn", text_auto=".1f")
+            fig.add_vline(x=0, line_dash="dash", line_color="gray")
+            fig.update_layout(yaxis=dict(title=None))
             st.plotly_chart(fig, use_container_width=True)
 
         elif metrik == "Amplitudo Musiman" and df_amp is not None:
             df_plot = df_amp[df_amp["Komoditas"].isin(pilih_kom)].sort_values("Amplitudo")
             fig = px.bar(df_plot, x="Amplitudo", y="Komoditas", orientation="h",
-                         title="Amplitudo Musiman (Juta US$)", color="Amplitudo",
-                         color_continuous_scale="Blues")
+                         title="Amplitudo Musiman (Juta US$)",
+                         color="Amplitudo", color_continuous_scale="Blues", text_auto=".1f")
+            fig.update_layout(yaxis=dict(title=None))
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Data belum tersedia. Jalankan script 03-04.")
 
     with col_b:
-        # Heatmap musiman per komoditas
-        if pilih_kom:
-            st.subheader("Pola Musiman")
-            bulan_label = ["Jan","Feb","Mar","Apr","Mei","Jun",
-                           "Jul","Agu","Sep","Okt","Nov","Des"]
-            heat_data = []
-            for kom in pilih_kom:
-                sub = df[df["Komoditas"] == kom]
-                means = sub.groupby("Bulan")["Nilai_Ekspor_Juta_USD"].mean()
-                heat_data.append(means.values)
+        st.subheader("Pola Musiman (Heatmap Interaktif)")
+        heat_data = []
+        heat_labels = []
+        for kom in pilih_kom:
+            sub = df[df["Komoditas"] == kom]
+            means = sub.groupby("Bulan")["Nilai_Ekspor_Juta_USD"].mean()
+            heat_data.append(means.values)
+            heat_labels.append(KOM_SINGKAT.get(kom, kom)[:12])
 
-            if heat_data:
-                fig, ax = plt.subplots(figsize=(8, max(3, len(pilih_kom)*0.6)))
-                im = ax.imshow(heat_data, aspect="auto", cmap="YlOrRd")
-                ax.set_xticks(range(12))
-                ax.set_xticklabels(bulan_label)
-                ax.set_yticks(range(len(pilih_kom)))
-                ax.set_yticklabels([k[:12] for k in pilih_kom])
-                plt.colorbar(im, ax=ax, label="Juta US$")
-                ax.set_title("Rata-rata Bulanan")
-                fig.tight_layout()
-                st.pyplot(fig)
+        if heat_data:
+            bulan_label = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+                           "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+            fig = go.Figure(data=go.Heatmap(
+                z=heat_data,
+                x=bulan_label,
+                y=heat_labels,
+                colorscale="YlOrRd",
+                hovertemplate="<b>%{y}</b><br>%{x}: %{z:.2f} Juta US$<extra></extra>"
+            ))
+            fig.update_layout(
+                title="Rata-rata Ekspor per Bulan",
+                xaxis=dict(title=None),
+                yaxis=dict(title=None),
+                height=max(200, len(pilih_kom) * 40 + 80),
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
+    # ===== TABEL RANGKUMAN SEMUA METRIK =====
+    st.divider()
+    st.subheader("📊 Rangkuman Lengkap Semua Komoditas")
+
+    if df_matriks is not None and df_amp is not None:
+        # Gabung matriks (CAGR, CV, Mean, Kuadran) + amplitudo (Puncak, Lembah)
+        rangkum = df_matriks[["Komoditas", "Singkat", "Mean_Juta_USD", "CV_%", "CAGR_%", "Kuadran"]].copy()
+        amp_sub = df_amp[["Komoditas", "Puncak", "Lembah", "Amplitudo"]].copy().rename(
+            columns={"Puncak": "Bulan Puncak", "Lembah": "Bulan Lembah", "Amplitudo": "Amplitudo (Juta US$)"}
+        )
+        rangkum = rangkum.merge(amp_sub, on="Komoditas", how="left")
+        # Drop kolom Komoditas asli (nama panjang), rename Singkat jadi Komoditas
+        rangkum = rangkum.drop(columns=["Komoditas"])
+        rangkum = rangkum.rename(columns={"Singkat": "Komoditas", "Mean_Juta_USD": "Mean (Juta US$)",
+                                          "CV_%": "CV (%)", "CAGR_%": "CAGR (%)"})
+
+        # Tambah ranking
+        rangkum["Rank CAGR"] = rangkum["CAGR (%)"].rank(ascending=False).astype(int)
+        rangkum["Rank Stabilitas"] = rangkum["CV (%)"].rank(ascending=True).astype(int)
+        rangkum = rangkum.sort_values("Kuadran")
+
+        st.dataframe(rangkum, use_container_width=True, hide_index=True)
+
+        # Download
+        csv_export = rangkum.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇ Download Rangkuman CSV",
+            data=csv_export,
+            file_name="rangkuman_kinerja_komoditas.csv",
+            mime="text/csv",
+        )
+    else:
+        st.info("Jalankan script 05b_matriks_strategis.py untuk melihat rangkuman.")
+
+# ===== TAB 3: ANALISIS LANJUTAN (100% Plotly interaktif) =====
 with tab3:
     st.header("Analisis Lanjutan")
 
-    kom_pilih_analisis = st.selectbox("Pilih satu komoditas:", pilih_kom)
+    kom_analisis = st.selectbox("Pilih satu komoditas:", pilih_kom)
 
-    if kom_pilih_analisis:
-        sub = df[df["Komoditas"] == kom_pilih_analisis].set_index("Tanggal")
-        sub = sub["Nilai_Ekspor_Juta_USD"].sort_index().fillna(0)
+    if kom_analisis:
+        sub = df[df["Komoditas"] == kom_analisis].set_index("Tanggal")
+        sub = sub["Nilai_Ekspor_Juta_USD"].sort_index()
+        sub_filled = sub.fillna(0)
 
-        if len(sub) >= 24:
+        if len(sub_filled) >= 24:
             model_dekomp = st.radio("Model Dekomposisi:", ["additive", "multiplicative"], horizontal=True)
 
             try:
-                sub_filled = sub.replace(0, 0.001) if model_dekomp == "multiplicative" else sub
-                result = seasonal_decompose(sub_filled, model=model_dekomp, period=12)
+                sub_input = sub_filled.replace(0, 0.001) if model_dekomp == "multiplicative" else sub_filled
+                result = seasonal_decompose(sub_input, model=model_dekomp, period=12)
 
-                fig, axes = plt.subplots(4, 1, figsize=(10, 7), sharex=True)
-                components = [
+                # Plot dekomposisi dengan Plotly
+                fig = make_subplots(
+                    rows=4, cols=1, shared_xaxes=True,
+                    vertical_spacing=0.08,
+                    subplot_titles=("Observed", "Tren", "Musiman", "Residual")
+                )
+
+                for row, (data, name) in enumerate([
                     (result.observed, "Observed"),
                     (result.trend, "Tren"),
                     (result.seasonal, "Musiman"),
                     (result.resid, "Residual"),
-                ]
-                for ax, (data_comp, label) in zip(axes, components):
-                    ax.plot(data_comp.index, data_comp, linewidth=1.0)
-                    ax.set_ylabel(label)
-                    ax.grid(True, alpha=0.3)
-                axes[0].set_title(f"Dekomposisi {model_dekomp.title()}: {kom_pilih_analisis}", fontweight="bold")
-                fig.tight_layout()
-                st.pyplot(fig)
+                ], 1):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=data.index, y=data.values,
+                            mode="lines", name=name,
+                            line=dict(width=1.5 if name != "Residual" else 0.8,
+                                      color="gray" if name == "Residual" else None)
+                        ),
+                        row=row, col=1
+                    )
+
+                fig.update_layout(
+                    title=f"Dekomposisi {model_dekomp.title()}: {kom_analisis}",
+                    height=700,
+                    showlegend=False,
+                    hovermode="x unified",
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
                 # Indeks musiman
                 seasonal_idx = result.seasonal.groupby(result.seasonal.index.month).mean()
-                bulan_label = ["Jan","Feb","Mar","Apr","Mei","Jun",
-                               "Jul","Agu","Sep","Okt","Nov","Des"]
-                df_idx = pd.DataFrame({
-                    "Bulan": bulan_label,
-                    "Indeks_Musiman": seasonal_idx.values
-                })
-                st.subheader("Indeks Musiman")
-                st.dataframe(df_idx.round(4), use_container_width=False)
+                bulan_label = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+                               "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+
+                fig_idx = go.Figure()
+                fig_idx.add_trace(go.Bar(
+                    x=bulan_label,
+                    y=seasonal_idx.values,
+                    marker_color=["#e74c3c" if v < 0 else "#2ecc71" for v in seasonal_idx.values],
+                ))
+                fig_idx.add_hline(y=0, line_dash="dash", line_color="gray")
+                fig_idx.update_layout(
+                    title="Indeks Musiman",
+                    xaxis=dict(title=None),
+                    yaxis=dict(title="Indeks"),
+                    height=300,
+                )
+                st.plotly_chart(fig_idx, use_container_width=True)
 
             except Exception as e:
                 st.error(f"Dekomposisi gagal: {e}")
         else:
             st.warning("Minimal 24 bulan data untuk dekomposisi.")
 
-    # Clustering results
     if df_cluster is not None:
         st.subheader("Segmentasi Komoditas (K-Means)")
-        st.dataframe(df_cluster[["Singkat", "Cluster", "Mean", "CV", "CAGR", "Amplitudo"]].round(2),
-                     use_container_width=True)
+        cols_show = [c for c in ["Singkat", "Cluster", "Mean", "CV", "CAGR", "Amplitudo"] if c in df_cluster.columns]
+        st.dataframe(df_cluster[cols_show].round(2), use_container_width=True)
 
+# ===== TAB 4: MATRIKS STRATEGIS (baru — 100% Plotly interaktif) =====
 with tab4:
+    st.header("📋 Matriks Strategis: Pertumbuhan vs Risiko")
+
+    if df_matriks is not None:
+        median_cv = df_matriks["CV_%"].median()
+        median_cagr = df_matriks["CAGR_%"].median()
+
+        # ---- Ringkasan Kuadran ----
+        st.subheader("Ringkasan Kuadran")
+        ringkasan = df_matriks.groupby("Kuadran").agg(
+            Jumlah=("Singkat", "count"),
+            Anggota=("Singkat", lambda x: ", ".join(x)),
+            Rata_Ekspor=("Mean_Juta_USD", "mean"),
+            Rata_CAGR=("CAGR_%", "mean"),
+            Rata_CV=("CV_%", "mean"),
+        ).round(2).reset_index()
+        ringkasan.columns = ["Kuadran", "Jumlah", "Anggota", "Rata Ekspor (Juta US$)", "Rata CAGR %", "Rata CV %"]
+
+        def warnai_kuadran(val):
+            warna = {"⭐ Andalan": "background-color: #2ECC71; color: white",
+                     "📈 Potensial": "background-color: #F39C12; color: white",
+                     "🟢 Stabil": "background-color: #3498DB; color: white",
+                     "⚠️ Risiko Tinggi": "background-color: #E74C3C; color: white"}
+            return warna.get(val, "")
+
+        st.dataframe(
+            ringkasan.style.applymap(warnai_kuadran, subset=["Kuadran"]),
+            use_container_width=True, hide_index=True,
+        )
+
+        # ---- Bubble Chart Utama: CAGR vs CV ----
+        st.subheader("Bubble Chart: CAGR vs CV (ukuran bubble = skala ekspor)")
+
+        fig = px.scatter(
+            df_matriks,
+            x="CV_%", y="CAGR_%",
+            size="Mean_Juta_USD",
+            color="Kuadran",
+            color_discrete_map=WARNA_KUADRAN,
+            text="Singkat",
+            hover_data={
+                "Singkat": False, "Komoditas": True,
+                "Mean_Juta_USD": ":.2f", "CV_%": ":.2f", "CAGR_%": ":.2f",
+            },
+            labels={
+                "CV_%": "CV (%) — Volatilitas (makin kanan makin fluktuatif)",
+                "CAGR_%": "CAGR (%) — Pertumbuhan Tahunan",
+            },
+            title="Pemetaan Strategis Komoditas Ekspor",
+        )
+        fig.add_hline(y=median_cagr, line_dash="dash", line_color="gray",
+                      annotation_text=f"Median CAGR {median_cagr:.1f}%",
+                      annotation_position="bottom left")
+        fig.add_vline(x=median_cv, line_dash="dash", line_color="gray",
+                      annotation_text=f"Median CV {median_cv:.1f}%",
+                      annotation_position="top right")
+        fig.update_traces(textposition="top center",
+                          marker=dict(line=dict(width=1, color="black")))
+        fig.update_layout(width=900, height=600)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ---- Detail Tabel Matriks ----
+        with st.expander("📊 Lihat Detail Semua Komoditas", expanded=False):
+            st.dataframe(
+                df_matriks[["Singkat", "Kuadran", "Mean_Juta_USD", "CV_%", "CAGR_%", "Amplitudo_Musiman"]]
+                .sort_values(["Kuadran", "Mean_Juta_USD"], ascending=[True, False])
+                .round(2),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        # ---- Interpretasi Cepat ----
+        st.subheader("📝 Interpretasi & Rekomendasi")
+        for kuadran, deskripsi in [
+            ("⭐ Andalan", "Pertumbuhan tinggi, risiko rendah. **Prioritas utama** — optimalkan ekspor, jaga kualitas, perluas pasar."),
+            ("📈 Potensial", "Pertumbuhan tinggi tapi fluktuatif. **Dikelola aktif** — butuh stabilisasi harga/volume, lindung nilai."),
+            ("🟢 Stabil", "Volume stabil tapi pertumbuhan rendah. **Dipertahankan** — efisiensi biaya, cari diferensiasi produk."),
+            ("⚠️ Risiko Tinggi", "Pertumbuhan rendah/negatif dengan volatilitas tinggi. **Evaluasi** — butuh intervensi kebijakan atau restrukturisasi."),
+        ]:
+            anggota = df_matriks[df_matriks["Kuadran"] == kuadran]["Singkat"].tolist()
+            if anggota:
+                st.markdown(f"**{kuadran}:** {', '.join(anggota)}")
+                st.markdown(f"> {deskripsi}")
+
+    else:
+        st.warning("Jalankan `scripts/05b_matriks_strategis.py` dulu untuk melihat matriks.")
+        st.code("python scripts/05b_matriks_strategis.py", language="bash")
+
+# ===== TAB 5: TABEL DATA =====
+with tab5:
     st.header("Data Mentah")
 
-    # Filter data
     df_tabel = df[df["Komoditas"].isin(pilih_kom)]
     df_tabel = df_tabel[["Tanggal", "Komoditas", "Nilai_Ekspor_Juta_USD"]]
     df_tabel.columns = ["Tanggal", "Komoditas", "Nilai Ekspor (Juta US$)"]
 
-    st.dataframe(df_tabel.sort_values(["Komoditas", "Tanggal"]),
-                 use_container_width=True, hide_index=True)
+    st.dataframe(
+        df_tabel.sort_values(["Komoditas", "Tanggal"]),
+        use_container_width=True, hide_index=True
+    )
 
-    # Download
     csv = df_tabel.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇ Download CSV",
