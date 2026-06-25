@@ -18,10 +18,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TABLE_DIR = BASE_DIR / "output" / "tables"
 
 WARNA_KUADRAN = {
-    "⭐ Andalan": "#2ECC71",
-    "📈 Potensial": "#F39C12",
-    "🟢 Stabil": "#3498DB",
-    "⚠️ Risiko Tinggi": "#E74C3C",
+    "Andalan": "#2ECC71",
+    "Potensial": "#F39C12",
+    "Stabil": "#3498DB",
+    "Risiko Tinggi": "#E74C3C",
 }
 
 # =====================================================================
@@ -197,6 +197,44 @@ with tab2:
             )
             st.plotly_chart(fig, use_container_width=True)
 
+    # ===== SEASONAL SUB SERIES =====
+    st.divider()
+    st.subheader("🌊 Pola Musiman — Seasonal Subseries")
+
+    kom_ss = st.selectbox("Pilih komoditas:", pilih_kom, key="ss_komoditas")
+
+    df_ss = df[df["Komoditas"] == kom_ss].copy()
+    df_ss["Tahun"] = df_ss["Tanggal"].dt.year
+    df_ss["Bulan_Angka"] = df_ss["Tanggal"].dt.month
+
+    fig_ss = go.Figure()
+    for tahun in sorted(df_ss["Tahun"].unique()):
+        sub = df_ss[df_ss["Tahun"] == tahun]
+        fig_ss.add_trace(go.Scatter(
+            x=sub["Bulan_Angka"], y=sub["Nilai_Ekspor_Juta_USD"],
+            mode="lines+markers", name=str(tahun),
+            line=dict(width=2),
+        ))
+
+    bulan_label = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+                   "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+
+    monthly_mean = df_ss.groupby("Bulan_Angka")["Nilai_Ekspor_Juta_USD"].mean()
+    fig_ss.add_trace(go.Scatter(
+        x=monthly_mean.index, y=monthly_mean.values,
+        mode="lines+markers", name="Rata-rata",
+        line=dict(color="black", width=3, dash="dash"),
+        marker=dict(size=8, symbol="diamond"),
+    ))
+
+    fig_ss.update_layout(
+        xaxis=dict(tickmode="array", tickvals=list(range(1,13)), ticktext=bulan_label),
+        title=f"Pola Musiman per Bulan — {kom_ss}",
+        yaxis=dict(title="Nilai Ekspor (Juta US$)"),
+        height=400,
+    )
+    st.plotly_chart(fig_ss, use_container_width=True)
+
     # ===== TABEL RANGKUMAN SEMUA METRIK =====
     st.divider()
     st.subheader("📊 Rangkuman Lengkap Semua Komoditas")
@@ -230,6 +268,30 @@ with tab2:
         )
     else:
         st.info("Jalankan script 05b_matriks_strategis.py untuk melihat rangkuman.")
+
+    # ===== TABEL DETAIL CAGR 2023–2025 =====
+    with st.expander("📈 Tabel Detail CAGR 2023–2025", expanded=False):
+        if df_cagr is not None:
+            st.dataframe(
+                df_cagr.style.format({"Total_2023": "{:,.1f}", "Total_2025": "{:,.1f}", "CAGR_%": "{:.2f}"}),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption("Sumber: diolah dari data BPS (2023–2025)")
+        else:
+            st.info("Data CAGR belum tersedia.")
+
+    # ===== TABEL RANKING CV =====
+    with st.expander("📊 Ranking Volatilitas (CV) dan Statistik Deskriptif", expanded=False):
+        if df_cv is not None:
+            st.dataframe(
+                df_cv[["Komoditas", "Singkat", "Mean", "Std", "CV_%", "Min", "Max"]]
+                .sort_values("CV_%")
+                .round(2),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption("CV = Coefficient of Variation. Semakin rendah CV, semakin stabil ekspor komoditas.")
+        else:
+            st.info("Data CV belum tersedia.")
 
 # ===== TAB 3: ANALISIS LANJUTAN (100% Plotly interaktif) =====
 with tab3:
@@ -310,6 +372,50 @@ with tab3:
         cols_show = [c for c in ["Singkat", "Cluster", "Mean", "CV", "CAGR", "Amplitudo"] if c in df_cluster.columns]
         st.dataframe(df_cluster[cols_show].round(2), use_container_width=True)
 
+    # ===== VISUALISASI CLUSTERING =====
+    if df_cluster is not None:
+        st.subheader("📌 Scatter Plot Segmentasi K-Means")
+
+        df_cluster_plot = df_cluster.copy()
+        df_cluster_plot["CAGR_%"] = df_cluster_plot["CAGR"] * 100
+
+        fig_cluster = px.scatter(
+            df_cluster_plot,
+            x="Mean", y="CAGR_%",
+            color="Cluster",
+            size="Scale",
+            text="Singkat",
+            hover_data={"Mean": ":.2f", "CAGR_%": ":.2f", "CV": ":.2f", "Amplitudo": ":.2f"},
+            labels={
+                "Mean": "Rata-rata Ekspor (Juta US$)",
+                "CAGR_%": "CAGR Tahunan (%)",
+                "Cluster": "Cluster",
+            },
+            title="Segmentasi Komoditas — Mean vs CAGR",
+        )
+        fig_cluster.update_traces(textposition="top center")
+        fig_cluster.update_layout(height=500)
+        st.plotly_chart(fig_cluster, use_container_width=True)
+
+        # Elbow method & Silhouette
+        st.subheader("📐 Evaluasi Jumlah Cluster")
+        col_elbow, col_sil = st.columns([2, 1])
+        with col_elbow:
+            try:
+                st.image(str(BASE_DIR / "output" / "plots" / "elbow_method.png"),
+                         caption="Metode Elbow untuk menentukan k optimal", use_container_width=True)
+            except Exception:
+                st.info("Gambar elbow_method.png belum tersedia. Jalankan scripts/05_clustering.py.")
+        with col_sil:
+            st.metric("Silhouette Score (k=2)", "0.48",
+                      help="Rentang -1 hingga 1. Semakin mendekati 1, semakin baik pemisahan cluster.")
+            st.markdown("""
+            **Interpretasi:**
+            - **k=2** konfigurasi optimal (silhouette score tertinggi)
+            - Kopi (Cluster 1) terpisah dari 12 komoditas lain (Cluster 0)
+            - Matriks Strategis 4 kuadran sebagai pendekatan komplementer
+            """)
+
 # ===== TAB 4: MATRIKS STRATEGIS (baru — 100% Plotly interaktif) =====
 with tab4:
     st.header("📋 Matriks Strategis: Pertumbuhan vs Risiko")
@@ -330,10 +436,10 @@ with tab4:
         ringkasan.columns = ["Kuadran", "Jumlah", "Anggota", "Rata Ekspor (Juta US$)", "Rata CAGR %", "Rata CV %"]
 
         def warnai_kuadran(val):
-            warna = {"⭐ Andalan": "background-color: #2ECC71; color: white",
-                     "📈 Potensial": "background-color: #F39C12; color: white",
-                     "🟢 Stabil": "background-color: #3498DB; color: white",
-                     "⚠️ Risiko Tinggi": "background-color: #E74C3C; color: white"}
+            warna = {"Andalan": "background-color: #2ECC71; color: white",
+                     "Potensial": "background-color: #F39C12; color: white",
+                     "Stabil": "background-color: #3498DB; color: white",
+                     "Risiko Tinggi": "background-color: #E74C3C; color: white"}
             return warna.get(val, "")
 
         st.dataframe(
@@ -385,10 +491,10 @@ with tab4:
         # ---- Interpretasi Cepat ----
         st.subheader("📝 Interpretasi & Rekomendasi")
         for kuadran, deskripsi in [
-            ("⭐ Andalan", "Pertumbuhan tinggi, risiko rendah. **Prioritas utama** — optimalkan ekspor, jaga kualitas, perluas pasar."),
-            ("📈 Potensial", "Pertumbuhan tinggi tapi fluktuatif. **Dikelola aktif** — butuh stabilisasi harga/volume, lindung nilai."),
-            ("🟢 Stabil", "Volume stabil tapi pertumbuhan rendah. **Dipertahankan** — efisiensi biaya, cari diferensiasi produk."),
-            ("⚠️ Risiko Tinggi", "Pertumbuhan rendah/negatif dengan volatilitas tinggi. **Evaluasi** — butuh intervensi kebijakan atau restrukturisasi."),
+            ("Andalan", "Pertumbuhan tinggi, risiko rendah. **Prioritas utama** — optimalkan ekspor, jaga kualitas, perluas pasar."),
+            ("Potensial", "Pertumbuhan tinggi tapi fluktuatif. **Dikelola aktif** — butuh stabilisasi harga/volume, lindung nilai."),
+            ("Stabil", "Volume stabil tapi pertumbuhan rendah. **Dipertahankan** — efisiensi biaya, cari diferensiasi produk."),
+            ("Risiko Tinggi", "Pertumbuhan rendah/negatif dengan volatilitas tinggi. **Evaluasi** — butuh intervensi kebijakan atau restrukturisasi."),
         ]:
             anggota = df_matriks[df_matriks["Kuadran"] == kuadran]["Singkat"].tolist()
             if anggota:

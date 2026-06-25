@@ -84,13 +84,13 @@ median_cagr = df_metrics["CAGR_%"].median()
 
 def klasifikasi_kuadran(row):
     if row["CAGR_%"] >= median_cagr and row["CV_%"] <= median_cv:
-        return "⭐ Andalan"
+        return "Andalan"
     elif row["CAGR_%"] >= median_cagr and row["CV_%"] > median_cv:
-        return "📈 Potensial"
+        return "Potensial"
     elif row["CAGR_%"] < median_cagr and row["CV_%"] <= median_cv:
-        return "🟢 Stabil"
+        return "Stabil"
     else:
-        return "⚠️ Risiko Tinggi"
+        return "Risiko Tinggi"
 
 df_metrics["Kuadran"] = df_metrics.apply(klasifikasi_kuadran, axis=1)
 df_metrics["Ukuran_Bubble"] = df_metrics["Mean_Juta_USD"]
@@ -118,10 +118,10 @@ for _, row in pivot.iterrows():
 # =====================================================================
 # Warna per kuadran
 warna_kuadran = {
-    "⭐ Andalan": "#2ECC71",
-    "📈 Potensial": "#F39C12",
-    "🟢 Stabil": "#3498DB",
-    "⚠️ Risiko Tinggi": "#E74C3C",
+    "Andalan": "#2ECC71",
+    "Potensial": "#F39C12",
+    "Stabil": "#3498DB",
+    "Risiko Tinggi": "#E74C3C",
 }
 
 # Bubble chart utama: CAGR vs CV, ukuran = Mean
