@@ -10,30 +10,20 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
-from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-PLOT_DIR = BASE_DIR / "output" / "plots"
-TABLE_DIR = BASE_DIR / "output" / "tables"
+from config import (
+    PLOT_DIR, TABLE_DIR,
+    KOMODITAS_SINGKAT, KOMODITAS_UNGGULAN,
+    init_rcparams,
+)
+
+init_rcparams()
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
-
-plt.rcParams.update({"figure.dpi": 150, "font.size": 10})
 
 df = pd.read_csv(TABLE_DIR / "dataset_komoditas_inti.csv")
 df["Tanggal"] = pd.to_datetime(df["Tanggal"])
 
-komoditas_singkat = {
-    "Sayur-sayuran": "Sayuran", "Tembakau": "Tembakau", "Jagung": "Jagung",
-    "Kopi": "Kopi",
-    "Tanaman Obat, Aromatik, dan Rempah-Rempah": "Tanaman Obat & Rempah",
-    "Lada Hitam": "Lada Hitam", "Lada Putih": "Lada Putih",
-    "Biji Kakao": "Kakao", "Buah-buahan Tahunan": "Buah Tahunan",
-    "Sarang Burung": "Sarang Burung",
-    "Hasil Hutan Bukan Kayu Lainnya": "Hasil Hutan Lain",
-    "Ikan Segar/Dingin Hasil Tangkapan": "Ikan Segar",
-    "Rumput Laut dan Ganggang Lainnya": "Rumput Laut",
-}
-kom_inti = list(komoditas_singkat.keys())
+kom_inti = KOMODITAS_UNGGULAN
 
 # =====================================================================
 # 5.1 FEATURE ENGINEERING
@@ -42,49 +32,36 @@ features = []
 for kom in kom_inti:
     sub = df[df["Komoditas"] == kom]["Nilai_Ekspor_Juta_USD"].dropna()
 
-    # Rata-rata nilai
     mean_val = sub.mean()
-
-    # CV (volatilitas)
     cv = (sub.std() / mean_val * 100) if mean_val > 0 else 0
 
-    # CAGR (2023→2025)
+    # CAGR 2023→2025
     total_tahunan = df[df["Komoditas"] == kom].groupby("Tahun")["Nilai_Ekspor_Juta_USD"].sum()
     if 2023 in total_tahunan.index and 2025 in total_tahunan.index:
-        awal = total_tahunan[2023]
-        akhir = total_tahunan[2025]
-        if awal > 0 and akhir > 0:
-            cagr = (akhir / awal) ** (1/2) - 1
-        else:
-            cagr = 0
+        awal, akhir = total_tahunan[2023], total_tahunan[2025]
+        cagr = ((akhir / awal) ** (1 / 2) - 1) if awal > 0 and akhir > 0 else 0
     else:
         cagr = 0
 
-    # Amplitudo musiman (range rata-rata per bulan)
+    # Amplitudo musiman
     monthly_avg = df[df["Komoditas"] == kom].groupby("Bulan")["Nilai_Ekspor_Juta_USD"].mean()
     amplitude = monthly_avg.max() - monthly_avg.min()
 
-    # Tren sederhana: koefisien regresi linear
+    # Tren: slope regresi linear
     sub_sorted = sub.sort_index()
     x = np.arange(len(sub_sorted))
     y = sub_sorted.values
-    if len(x) > 1:
-        slope = np.polyfit(x, y, 1)[0]
-    else:
-        slope = 0
-
-    # Skala (mean) — untuk bedakan komoditas besar vs kecil
-    scale = mean_val
+    slope = np.polyfit(x, y, 1)[0] if len(x) > 1 else 0
 
     features.append({
         "Komoditas": kom,
-        "Singkat": komoditas_singkat[kom],
+        "Singkat": KOMODITAS_SINGKAT[kom],
         "Mean": mean_val,
         "CV": cv,
         "CAGR": cagr,
         "Amplitudo": amplitude,
         "Slope": slope,
-        "Scale": scale,
+        "Scale": mean_val,
     })
 
 df_feat = pd.DataFrame(features)
@@ -95,7 +72,6 @@ print(df_feat.round(3).to_string(index=False))
 # 5.2 ELBOW METHOD — cari k optimal
 # =====================================================================
 X = df_feat[["Mean", "CV", "CAGR", "Amplitudo", "Slope"]].copy()
-# Normalisasi
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
@@ -138,7 +114,6 @@ km = KMeans(n_clusters=k_final, random_state=42, n_init=10)
 df_feat["Cluster"] = km.fit_predict(X_scaled)
 df_feat.to_csv(TABLE_DIR / "clustering_hasil.csv", index=False)
 
-# Profil tiap cluster
 print(f"\n=== PROFIL CLUSTER (k={k_final}) ===")
 for c in sorted(df_feat["Cluster"].unique()):
     anggota = df_feat[df_feat["Cluster"] == c]
@@ -146,7 +121,7 @@ for c in sorted(df_feat["Cluster"].unique()):
     print(f"  Anggota: {', '.join(anggota['Singkat'].values)}")
     print(f"  Rata-rata Mean: {anggota['Mean'].mean():.1f}")
     print(f"  Rata-rata CV: {anggota['CV'].mean():.1f}%")
-    print(f"  Rata-rata CAGR: {anggota['CAGR'].mean()*100:.1f}%")
+    print(f"  Rata-rata CAGR: {anggota['CAGR'].mean() * 100:.1f}%")
 
 # =====================================================================
 # 5.4 VISUALISASI CLUSTER — scatter plot 2D
@@ -157,7 +132,7 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 ax = axes[0]
 scatter = ax.scatter(
     df_feat["Mean"], df_feat["CV"],
-    c=df_feat["Cluster"], cmap="Set2", s=100, edgecolors="black"
+    c=df_feat["Cluster"], cmap="Set2", s=100, edgecolors="black",
 )
 for _, row in df_feat.iterrows():
     ax.annotate(row["Singkat"], (row["Mean"], row["CV"]),
@@ -170,11 +145,11 @@ ax.grid(True, alpha=0.3)
 # Plot 2: Mean vs CAGR
 ax = axes[1]
 scatter = ax.scatter(
-    df_feat["Mean"], df_feat["CAGR"]*100,
-    c=df_feat["Cluster"], cmap="Set2", s=100, edgecolors="black"
+    df_feat["Mean"], df_feat["CAGR"] * 100,
+    c=df_feat["Cluster"], cmap="Set2", s=100, edgecolors="black",
 )
 for _, row in df_feat.iterrows():
-    ax.annotate(row["Singkat"], (row["Mean"], row["CAGR"]*100),
+    ax.annotate(row["Singkat"], (row["Mean"], row["CAGR"] * 100),
                 fontsize=7, ha="center", va="bottom")
 ax.axhline(0, color="gray", linestyle="--", alpha=0.5)
 ax.set_xlabel("Rata-rata Ekspor (Juta US$)")

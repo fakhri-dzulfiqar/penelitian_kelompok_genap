@@ -8,16 +8,14 @@ Output:
 - CSV ringkasan ke output/tables/ringkasan_dataset_penelitian.csv
 """
 
-from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 
-BASE_DIR = Path(r"f:\PC Mas Indra\Project\ekspor")
-TABLE_DIR = BASE_DIR / "output" / "tables"
-PLOT_DIR = BASE_DIR / "output" / "plots"
+from config import BASE_DIR, TABLE_DIR, PLOT_DIR
+
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 # =========================================================
@@ -31,15 +29,15 @@ ringkasan = pd.DataFrame({
         "Periode",
         "Jumlah komoditas",
         "Jumlah observasi inti",
-        "Sumber data"
+        "Sumber data",
     ],
     "Nilai": [
         4,
         "Januari 2023 – Februari 2026",
         df["Komoditas"].nunique(),
         int(df["Nilai_Ekspor_Juta_USD"].notna().sum()),
-        "Badan Pusat Statistik (BPS)"
-    ]
+        "Badan Pusat Statistik (BPS)",
+    ],
 })
 
 print("=== Ringkasan Dataset Penelitian ===")
@@ -51,6 +49,7 @@ for i, kom in enumerate(sorted(df["Komoditas"].unique()), start=1):
 
 ringkasan.to_csv(TABLE_DIR / "ringkasan_dataset_penelitian.csv", index=False)
 
+
 # =========================================================
 # 2) GAMBAR ALUR PENGOLAHAN DATA
 # =========================================================
@@ -58,7 +57,7 @@ def kotak(ax, x, y, text, width=2.3, height=0.9, facecolor="#ecf0f1"):
     box = FancyBboxPatch(
         (x, y), width, height,
         boxstyle="round,pad=0.02,rounding_size=0.08",
-        linewidth=1.5, edgecolor="#2c3e50", facecolor=facecolor
+        linewidth=1.5, edgecolor="#2c3e50", facecolor=facecolor,
     )
     ax.add_patch(box)
     ax.text(x + width / 2, y + height / 2, text,
@@ -69,7 +68,7 @@ def panah(ax, x1, y1, x2, y2):
     arrow = FancyArrowPatch(
         (x1, y1), (x2, y2),
         arrowstyle="->", mutation_scale=15,
-        linewidth=1.5, color="#2c3e50"
+        linewidth=1.5, color="#2c3e50",
     )
     ax.add_patch(arrow)
 

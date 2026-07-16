@@ -8,29 +8,19 @@ Proposal: Analisis Tren dan Pola Musiman Ekspor Komoditas Pertanian Unggulan Ind
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
-from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-PLOT_DIR = BASE_DIR / "output" / "plots"
-TABLE_DIR = BASE_DIR / "output" / "tables"
+from config import (
+    PLOT_DIR, TABLE_DIR,
+    KOMODITAS_SINGKAT, KOMODITAS_UNGGULAN,
+    WARNA_KUADRAN,
+)
+
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 df = pd.read_csv(TABLE_DIR / "dataset_komoditas_inti.csv")
 df["Tanggal"] = pd.to_datetime(df["Tanggal"])
 
-komoditas_singkat = {
-    "Sayur-sayuran": "Sayuran", "Tembakau": "Tembakau", "Jagung": "Jagung",
-    "Kopi": "Kopi",
-    "Tanaman Obat, Aromatik, dan Rempah-Rempah": "Tanaman Obat & Rempah",
-    "Lada Hitam": "Lada Hitam", "Lada Putih": "Lada Putih",
-    "Biji Kakao": "Kakao", "Buah-buahan Tahunan": "Buah Tahunan",
-    "Sarang Burung": "Sarang Burung",
-    "Hasil Hutan Bukan Kayu Lainnya": "Hasil Hutan Lain",
-    "Ikan Segar/Dingin Hasil Tangkapan": "Ikan Segar",
-    "Rumput Laut dan Ganggang Lainnya": "Rumput Laut",
-}
-kom_inti = list(komoditas_singkat.keys())
+kom_inti = KOMODITAS_UNGGULAN
 
 # =====================================================================
 # 1. HITUNG METRIK PER KOMODITAS
@@ -39,18 +29,14 @@ metrics = []
 for kom in kom_inti:
     sub = df[df["Komoditas"] == kom]["Nilai_Ekspor_Juta_USD"].dropna()
 
-    # Rata-rata ekspor
     mean_val = sub.mean()
-
-    # CV (volatilitas)
     cv = (sub.std() / mean_val * 100) if mean_val > 0 else 0
 
     # CAGR 2023→2025
     total_tahunan = df[df["Komoditas"] == kom].groupby("Tahun")["Nilai_Ekspor_Juta_USD"].sum()
     if 2023 in total_tahunan.index and 2025 in total_tahunan.index:
-        awal = total_tahunan[2023]
-        akhir = total_tahunan[2025]
-        cagr = ((akhir / awal) ** (1/2) - 1) if awal > 0 and akhir > 0 else 0
+        awal, akhir = total_tahunan[2023], total_tahunan[2025]
+        cagr = ((akhir / awal) ** (1 / 2) - 1) if awal > 0 and akhir > 0 else 0
     else:
         cagr = 0
 
@@ -66,7 +52,7 @@ for kom in kom_inti:
 
     metrics.append({
         "Komoditas": kom,
-        "Singkat": komoditas_singkat[kom],
+        "Singkat": KOMODITAS_SINGKAT[kom],
         "Mean_Juta_USD": round(mean_val, 2),
         "CV_%": round(cv, 2),
         "CAGR_%": round(cagr * 100, 2),
@@ -82,6 +68,7 @@ df_metrics = pd.DataFrame(metrics)
 median_cv = df_metrics["CV_%"].median()
 median_cagr = df_metrics["CAGR_%"].median()
 
+
 def klasifikasi_kuadran(row):
     if row["CAGR_%"] >= median_cagr and row["CV_%"] <= median_cv:
         return "Andalan"
@@ -91,6 +78,7 @@ def klasifikasi_kuadran(row):
         return "Stabil"
     else:
         return "Risiko Tinggi"
+
 
 df_metrics["Kuadran"] = df_metrics.apply(klasifikasi_kuadran, axis=1)
 df_metrics["Ukuran_Bubble"] = df_metrics["Mean_Juta_USD"]
@@ -102,7 +90,7 @@ print("=== MATRIKS STRATEGIS: CAGR × CV × Mean ===")
 print(f"Median CV: {median_cv:.1f}%")
 print(f"Median CAGR: {median_cagr:.1f}%\n")
 pivot = df_metrics.pivot_table(
-    index="Kuadran", aggfunc={"Singkat": list, "Mean_Juta_USD": "mean", "CAGR_%": "mean", "CV_%": "mean"}
+    index="Kuadran", aggfunc={"Singkat": list, "Mean_Juta_USD": "mean", "CAGR_%": "mean", "CV_%": "mean"},
 )
 pivot.columns = ["Rata_CAGR_%", "Rata_CV_%", "Rata_Mean", "Anggota"]
 pivot = pivot[["Anggota", "Rata_Mean", "Rata_CAGR_%", "Rata_CV_%"]]
@@ -116,14 +104,6 @@ for _, row in pivot.iterrows():
 # =====================================================================
 # 3. VISUALISASI BUBBLE CHART INTERAKTIF (Plotly)
 # =====================================================================
-# Warna per kuadran
-warna_kuadran = {
-    "Andalan": "#2ECC71",
-    "Potensial": "#F39C12",
-    "Stabil": "#3498DB",
-    "Risiko Tinggi": "#E74C3C",
-}
-
 # Bubble chart utama: CAGR vs CV, ukuran = Mean
 fig = px.scatter(
     df_metrics,
@@ -131,7 +111,7 @@ fig = px.scatter(
     y="CAGR_%",
     size="Ukuran_Bubble",
     color="Kuadran",
-    color_discrete_map=warna_kuadran,
+    color_discrete_map=WARNA_KUADRAN,
     text="Singkat",
     hover_data={
         "Singkat": False,
@@ -153,12 +133,12 @@ fig = px.scatter(
 fig.add_hline(
     y=median_cagr, line_dash="dash", line_color="gray",
     annotation_text=f"Median CAGR: {median_cagr:.1f}%",
-    annotation_position="bottom left"
+    annotation_position="bottom left",
 )
 fig.add_vline(
     x=median_cv, line_dash="dash", line_color="gray",
     annotation_text=f"Median CV: {median_cv:.1f}%",
-    annotation_position="top right"
+    annotation_position="top right",
 )
 
 fig.update_traces(
@@ -175,7 +155,7 @@ fig.write_html(PLOT_DIR / "matriks_strategis.html")
 try:
     fig.write_image(PLOT_DIR / "matriks_strategis.png", width=1000, height=700, engine="auto")
 except Exception:
-    pass  # kaleido gak terinstall, PNG skip
+    pass  # kaleido tidak terinstall, PNG skip
 print("✅ Bubble chart matriks strategis tersimpan (HTML)")
 
 # ---- Pendukung: CAGR vs Mean ----
@@ -185,7 +165,7 @@ fig2 = px.scatter(
     y="CAGR_%",
     size="Ukuran_Bubble",
     color="Kuadran",
-    color_discrete_map=warna_kuadran,
+    color_discrete_map=WARNA_KUADRAN,
     text="Singkat",
     hover_data={"Singkat": False, "Komoditas": True, "CV_%": ":.2f"},
     labels={
@@ -206,7 +186,7 @@ fig3 = px.scatter(
     y="CV_%",
     size="Ukuran_Bubble",
     color="Kuadran",
-    color_discrete_map=warna_kuadran,
+    color_discrete_map=WARNA_KUADRAN,
     text="Singkat",
     hover_data={"Singkat": False, "Komoditas": True, "CAGR_%": ":.2f"},
     labels={

@@ -7,15 +7,15 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from config import BASE_DIR, OUTPUT_DIR, TABLE_DIR, BULAN_MAP, BULAN_KOLOM, KOMODITAS_UNGGULAN
+
 DATA_DIR = BASE_DIR
-OUTPUT_DIR = BASE_DIR / "output"
 
 # --- 1. LOAD & GABUNG SEMUA FILE CSV ---
-tahun_list = [2023, 2024, 2025, 2026]
+TAHUN_LIST = [2023, 2024, 2025, 2026]
 df_all = []
 
-for tahun in tahun_list:
+for tahun in TAHUN_LIST:
     fname = f"Nilai Ekspor Bulanan Hasil Pertanian Menurut Komoditas , {tahun}.csv"
     file_path = DATA_DIR / fname
 
@@ -37,20 +37,14 @@ df_raw = pd.concat(df_all, ignore_index=True)
 print(f"\nTotal gabungan: {len(df_raw)} baris x {len(df_raw.columns)} kolom")
 
 # --- 2. RESHAPE KE FORMAT PANJANG (TIDY DATA) ---
-bulan_map = {
-    "Januari":1,"Februari":2,"Maret":3,"April":4,"Mei":5,"Juni":6,
-    "Juli":7,"Agustus":8,"September":9,"Oktober":10,"November":11,"Desember":12
-}
-bulan_kolom = list(bulan_map.keys())
-
 df_long = pd.melt(
     df_raw,
     id_vars=["Komoditas","Tahun"],
-    value_vars=bulan_kolom,
+    value_vars=BULAN_KOLOM,
     var_name="Bulan_Str",
     value_name="Nilai_Ekspor_Juta_USD"
 )
-df_long["Bulan"] = df_long["Bulan_Str"].map(bulan_map)
+df_long["Bulan"] = df_long["Bulan_Str"].map(BULAN_MAP)
 df_long.drop(columns=["Bulan_Str"], inplace=True)
 
 # Konversi nilai numerik
@@ -72,16 +66,8 @@ print(df_long.head())
 
 # --- 3. PISAHKAN KOMODITAS INTI VS AGREGAT ---
 # Agregat: "Lainnya" dan "Jumlah"
-komoditas_unggulan = [
-    "Sayur-sayuran", "Tembakau", "Jagung", "Kopi",
-    "Tanaman Obat, Aromatik, dan Rempah-Rempah", "Lada Hitam", "Lada Putih",
-    "Biji Kakao", "Buah-buahan Tahunan", "Sarang Burung",
-    "Hasil Hutan Bukan Kayu Lainnya", "Ikan Segar/Dingin Hasil Tangkapan",
-    "Rumput Laut dan Ganggang Lainnya"
-]
-
-df_inti = df_long[df_long["Komoditas"].isin(komoditas_unggulan)].copy()
-df_agregat = df_long[~df_long["Komoditas"].isin(komoditas_unggulan)].copy()
+df_inti = df_long[df_long["Komoditas"].isin(KOMODITAS_UNGGULAN)].copy()
+df_agregat = df_long[~df_long["Komoditas"].isin(KOMODITAS_UNGGULAN)].copy()
 
 print(f"\nKomoditas inti: {df_inti['Komoditas'].nunique()} item")
 print(f"  → {df_inti['Komoditas'].unique().tolist()}")
@@ -94,12 +80,11 @@ print(f"\nData hilang per kolom:\n{missing[missing > 0]}")
 
 # --- 5. SIMPAN ---
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-df_clean_path = OUTPUT_DIR / "tables"
-df_clean_path.mkdir(exist_ok=True)
+TABLE_DIR.mkdir(exist_ok=True)
 
-df_long.to_csv(df_clean_path / "dataset_lengkap.csv", index=False)
-df_inti.to_csv(df_clean_path / "dataset_komoditas_inti.csv", index=False)
-df_agregat.to_csv(df_clean_path / "dataset_agregat.csv", index=False)
+df_long.to_csv(TABLE_DIR / "dataset_lengkap.csv", index=False)
+df_inti.to_csv(TABLE_DIR / "dataset_komoditas_inti.csv", index=False)
+df_agregat.to_csv(TABLE_DIR / "dataset_agregat.csv", index=False)
 
-print(f"\n✅ Semua data tersimpan di: {df_clean_path}")
+print(f"\n✅ Semua data tersimpan di: {TABLE_DIR}")
 print("Selesai — script 01.")
